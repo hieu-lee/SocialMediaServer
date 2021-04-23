@@ -29,8 +29,9 @@ namespace SocialMediaServer
         public void ConfigureServices(IServiceCollection services)
         {
             services.AddCors(options => options.AddDefaultPolicy(
-                builder => builder.AllowAnyOrigin()
+                builder => builder.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()
             ));
+
             services.AddSingleton<MemoryDataAndEmailService>();
             services.AddSingleton<EncryptionAndCompressService>();
             services.AddSingleton<IMongoClient, MongoClient>(s => {
@@ -52,6 +53,7 @@ namespace SocialMediaServer
             {
                 app.UseDeveloperExceptionPage();
             }
+            app.UseCors();
 
             app.UseHttpsRedirection();
 
