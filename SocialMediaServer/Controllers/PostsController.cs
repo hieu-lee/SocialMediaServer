@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Cors;
+using Microsoft.AspNetCore.Mvc;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using SocialMediaServer.Services;
@@ -12,6 +13,7 @@ using System.Threading.Tasks;
 
 namespace SocialMediaServer.Controllers
 {
+    [EnableCors("MyPolicy")]
     [ApiKeyAuth]
     [Route("[controller]")]
     [ApiController]

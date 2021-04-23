@@ -7,11 +7,13 @@ using System.Threading.Tasks;
 using SocialMediaServer.Validation;
 using SocialMediaServer.Services;
 using MongoDB.Bson;
+using Microsoft.AspNetCore.Cors;
 
 // For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 
 namespace SocialMediaServer.Controllers
 {
+    [EnableCors("MyPolicy")]
     [ApiKeyAuth]
     [Route("[controller]")]
     [ApiController]

@@ -28,8 +28,8 @@ namespace SocialMediaServer
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-            services.AddCors(options => options.AddDefaultPolicy(
-                builder => builder.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()
+            services.AddCors(options => options.AddPolicy("MyPolicy",
+                builder => builder.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()
             ));
 
             services.AddSingleton<MemoryDataAndEmailService>();
@@ -53,11 +53,12 @@ namespace SocialMediaServer
             {
                 app.UseDeveloperExceptionPage();
             }
-            app.UseCors();
 
             app.UseHttpsRedirection();
 
             app.UseRouting();
+
+            app.UseCors("MyPolicy");
 
             app.UseAuthorization();
 
