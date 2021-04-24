@@ -419,6 +419,22 @@ namespace SocialMediaServer.Controllers
             var task = walls.DropCollectionAsync(username);
             var filter = Builders<Account>.Filter.Eq("_id", username);
             accounts.DeleteOne(filter);
+            if (memoryService.AccessTokens.ContainsKey(username))
+            {
+                memoryService.AccessTokens.Remove(username);
+            }
+            if (memoryService.ResetAccounts.ContainsKey(username))
+            {
+                memoryService.ResetAccounts.Remove(username);
+            }
+            if (memoryService.SessionTracker.ContainsKey(username))
+            {
+                memoryService.SessionTracker.Remove(username);
+            }
+            if (memoryService.TimerReset.ContainsKey(username))
+            {
+                memoryService.TimerReset.Remove(username); 
+            }
             await task;
         }
     }
