@@ -19,6 +19,7 @@ namespace SocialMediaServer.Services
         public Dictionary<string, Timer> OnlineTrack { get; set; } = new();
         public Dictionary<string, string> AccessTokens { get; set; } = new();
         public Dictionary<string, DateTime> SessionTracker { get; set; } = new();
+        public HashSet<string> VerifiedUsers { get; set; } = new();
         public Timer SessionTimer = new(86400000);
 
         public MemoryDataAndEmailService()

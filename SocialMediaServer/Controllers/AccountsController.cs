@@ -34,16 +34,12 @@ namespace SocialMediaServer.Controllers
         }
 
         [HttpGet("{username}/search")]
-        public Account SearchByUsername(string username, [FromHeader] string AccessToken)
+        public Account SearchByUsername(string username)
         {
-            if (memoryService.AccessTokens[username] == AccessToken)
+            var acc = accounts.Find(s => s.username == username).FirstOrDefault();
+            if (acc is not null)
             {
-                var acc = accounts.Find(s => s.username == username).FirstOrDefault();
-                if (acc is not null)
-                {
-                    return new Account() { username = acc.username, avatar = encryptService.Compress(acc.avatar) };
-                }
-                return null;
+                return new Account() { username = acc.username, avatar = encryptService.Compress(acc.avatar) };
             }
             return null;
         }
@@ -187,6 +183,7 @@ namespace SocialMediaServer.Controllers
                     memoryService.TimerReset[username].Enabled = false;
                     memoryService.TimerReset[username].Close();
                     memoryService.TimerReset.Remove(username);
+                    memoryService.VerifiedUsers.Add(username);
                     return new SignResult() { success = true };
                 }
                 return new SignResult() { success = false, err = "Your verification code is incorrect" };
@@ -194,33 +191,58 @@ namespace SocialMediaServer.Controllers
             return new SignResult() { success = false, err = "Your verification code has expired" };
         }
 
-        [HttpPost("verify-signup")]
-        public async Task<string> SignUpAfterVerify([FromBody] Account acc)
+        [HttpPost("verify-signup/{code:int}")]
+        public async Task<IActionResult> SignUpAfterVerify(int code, [FromBody] Account acc)
         {
-            var filter = Builders<Account>.Filter.Eq("_id", acc.username);
-            var update = Builders<Account>.Update.Set("online", true);
-            acc.password = encryptService.Encrypt(acc.password);
-            var task = walls.CreateCollectionAsync(acc.username);
-            var task2 = accounts.UpdateOneAsync(filter, update);
-            var task3 = accounts.InsertOneAsync(acc);
-            memoryService.OnlineTrack[acc.username] = new(600000);
-            memoryService.OnlineTrack[acc.username].Elapsed += (s, e) =>
+            if (memoryService.ResetAccounts.ContainsKey(acc.username))
+            {
+                if (code == memoryService.ResetAccounts[acc.username])
+                {
+                    memoryService.ResetAccounts.Remove(acc.username);
+                    memoryService.TimerReset[acc.username].Enabled = false;
+                    memoryService.TimerReset[acc.username].Close();
+                    memoryService.TimerReset.Remove(acc.username);
+                    memoryService.VerifiedUsers.Add(acc.username);
+                }
+                else
+                {
+                    return Forbid("Your verification code is incorrect");
+                }
+            }
+            else
+            {
+                return NotFound("Your verification code has expired");
+            }
+            if (memoryService.VerifiedUsers.Contains(acc.username))
             {
                 var filter = Builders<Account>.Filter.Eq("_id", acc.username);
-                var update = Builders<Account>.Update.Set("online", false);
-                accounts.UpdateOne(filter, update);
-                memoryService.OnlineTrack[acc.username].Stop();
-                memoryService.OnlineTrack.Remove(acc.username);
-                memoryService.OnlineTrack[acc.username].Close();
-            };
-            memoryService.OnlineTrack[acc.username].Enabled = true;
-            await task;
-            await task2;
-            await task3;
-            var accesstoken = ObjectId.GenerateNewId().ToString();
-            memoryService.AccessTokens[acc.username] = accesstoken;
-            memoryService.CreateSessionTracker(acc.username);
-            return accesstoken;
+                var update = Builders<Account>.Update.Set("online", true);
+                acc.password = encryptService.Encrypt(acc.password);
+                var task = walls.CreateCollectionAsync(acc.username);
+                var task2 = accounts.UpdateOneAsync(filter, update);
+                var task3 = accounts.InsertOneAsync(acc);
+                memoryService.OnlineTrack[acc.username] = new(600000);
+                memoryService.OnlineTrack[acc.username].Elapsed += (s, e) =>
+                {
+                    var filter = Builders<Account>.Filter.Eq("_id", acc.username);
+                    var update = Builders<Account>.Update.Set("online", false);
+                    accounts.UpdateOne(filter, update);
+                    memoryService.OnlineTrack[acc.username].Stop();
+                    memoryService.OnlineTrack.Remove(acc.username);
+                    memoryService.OnlineTrack[acc.username].Close();
+                };
+                memoryService.OnlineTrack[acc.username].Enabled = true;
+                await task;
+                await task2;
+                await task3;
+                var accesstoken = ObjectId.GenerateNewId().ToString();
+                memoryService.AccessTokens[acc.username] = accesstoken;
+                memoryService.CreateSessionTracker(acc.username);
+                memoryService.VerifiedUsers.Remove(acc.username);
+                return Ok(accesstoken);
+            }
+            return Unauthorized("Your account hasn't been verified");
+            
         }
 
         [HttpPost("signin")]
@@ -228,7 +250,7 @@ namespace SocialMediaServer.Controllers
         {
             var filter = Builders<Account>.Filter.Eq("_id", acc.username);
             var update = Builders<Account>.Update.Set("online", true);
-            var myacc = accounts.Find(filter).FirstOrDefault();
+            var myacc = await accounts.Find(filter).FirstOrDefaultAsync();
             if (myacc is not null)
             {
                 if (encryptService.Decrypt(myacc.password) == acc.password)
@@ -268,7 +290,7 @@ namespace SocialMediaServer.Controllers
         public async Task<SignResult> SignUp([FromBody] Account acc)
         {
             var filter = Builders<Account>.Filter.Eq("_id", acc.username);
-            var myacc = accounts.Find(filter).FirstOrDefault();
+            var myacc = await accounts.Find(filter).FirstOrDefaultAsync();
             if (myacc is not null)
             {
                 return new SignResult() { success = false, err = "Your username has been taken" };
@@ -286,8 +308,20 @@ namespace SocialMediaServer.Controllers
             return new SignResult() { success = true };
         }
 
+        [HttpPut("update-account")]
+        public async Task<IActionResult> UpdateAccount([FromHeader] string AccessToken, [FromBody] Account account)
+        {
+            if (memoryService.AccessTokens[account.username] == AccessToken)
+            {
+                var filter = Builders<Account>.Filter.Eq("_id", account.username);
+                await accounts.FindOneAndReplaceAsync(filter, account);
+                return Ok("Update complete");
+            }
+            return Unauthorized("Invalid AccessToken");
+        }
+
         [HttpPut("connection/{username}")]
-        public void UpdateConnection(string username, [FromBody] bool connected, [FromHeader] string AccessToken)
+        public async Task<IActionResult> UpdateConnection(string username, [FromBody] bool connected, [FromHeader] string AccessToken)
         {
             if (memoryService.AccessTokens[username] == AccessToken) 
             {
@@ -300,117 +334,131 @@ namespace SocialMediaServer.Controllers
                         var update = Builders<Account>.Update.Set("online", true);
                         accounts.UpdateOne(filter, update);
                         memoryService.OnlineTrack[username] = new(600000);
-                        memoryService.OnlineTrack[username].Elapsed += (s, e) =>
+                        memoryService.OnlineTrack[username].Elapsed += async (s, e) =>
                         {
                             var filter = Builders<Account>.Filter.Eq("_id", username);
                             var update = Builders<Account>.Update.Set("online", false);
-                            accounts.UpdateOne(filter, update);
+                            await accounts.UpdateOneAsync(filter, update);
                             memoryService.OnlineTrack[username].Stop();
                             memoryService.OnlineTrack.Remove(username);
                             memoryService.OnlineTrack[username].Close();
                         };
                         memoryService.OnlineTrack[username].Enabled = true;
-                        return;
+                        return Ok();
                     }
                     else
                     {
                         memoryService.OnlineTrack[username].Stop();
                         memoryService.OnlineTrack[username].Close();
                         memoryService.OnlineTrack[username] = new(600000);
-                        memoryService.OnlineTrack[username].Elapsed += (s, e) =>
+                        memoryService.OnlineTrack[username].Elapsed += async (s, e) =>
                         {
                             var filter = Builders<Account>.Filter.Eq("_id", username);
                             var update = Builders<Account>.Update.Set("online", false);
-                            accounts.UpdateOne(filter, update);
+                            await accounts.UpdateOneAsync(filter, update);
                             memoryService.OnlineTrack[username].Stop();
                             memoryService.OnlineTrack.Remove(username);
                             memoryService.OnlineTrack[username].Close();
                         };
                         memoryService.OnlineTrack[username].Enabled = true;
-                        return;
+                        return Ok();
                     }
                 }
                 else
                 {
                     var filter = Builders<Account>.Filter.Eq("_id", username);
                     var update = Builders<Account>.Update.Set("online", false);
-                    accounts.UpdateOne(filter, update);
+                    await accounts.UpdateOneAsync(filter, update);
                     memoryService.OnlineTrack[username].Stop();
                     memoryService.OnlineTrack[username].Close();
                     memoryService.OnlineTrack.Remove(username);
-                    return;
+                    return Ok();
                 }
             }
+            return Unauthorized("Invaid AccessToken");
         }
 
         [HttpPut("send/{username}")]
-        public void SendFriendRequest(string username, [FromBody] string newfriend, [FromHeader] string AccessToken)
+        public async Task<IActionResult> SendFriendRequest(string username, [FromBody] string newfriend, [FromHeader] string AccessToken)
         {
             if (memoryService.AccessTokens[username] == AccessToken) 
             {
                 var filter = Builders<Account>.Filter.Eq("_id", username);
                 var update = Builders<Account>.Update.AddToSet("waitinglist", newfriend);
-                accounts.UpdateOne(filter, update);
+                await accounts.UpdateOneAsync(filter, update);
+                return Ok();
             }
+            return Unauthorized("Invalid AccessToken");
         }
 
         [HttpPut("accept/{username}")]
-        public void AcceptFriendRequest(string username, [FromBody] string newfriend, [FromHeader] string AccessToken)
+        public async Task<IActionResult> AcceptFriendRequest(string username, [FromBody] string newfriend, [FromHeader] string AccessToken)
         {
             if (memoryService.AccessTokens[username] == AccessToken) 
             {
                 var filter = Builders<Account>.Filter.Eq("_id", username);
-                var myacc = accounts.Find(filter).FirstOrDefault();
+                var myacc = await accounts.Find(filter).FirstOrDefaultAsync();
                 myacc.friendlist.Add(newfriend);
                 myacc.waitinglist.Remove(newfriend);
-                accounts.FindOneAndReplace(filter, myacc);
+                await accounts.FindOneAndReplaceAsync(filter, myacc);
+                return Ok();
             }
+            return Unauthorized("Invalid AccessToken");
         }
 
         [HttpPut("bio/{username}")]
-        public void UpdateBio(string username, [FromBody] string bio, [FromHeader] string AccessToken)
+        public async Task<IActionResult> UpdateBio(string username, [FromBody] string bio, [FromHeader] string AccessToken)
         {
             if (memoryService.AccessTokens[username] == AccessToken) 
             {
                 var filter = Builders<Account>.Filter.Eq("_id", username);
                 var update = Builders<Account>.Update.Set("bio", bio);
-                accounts.UpdateOne(filter, update);
+                await accounts.UpdateOneAsync(filter, update);
+                return Ok();
             }
+            return Unauthorized("Invalid AccessToken");
         }
 
         [HttpPut("password/{username}")]
-        public void UpdatePassword(string username, [FromBody] string newpassword, [FromHeader] string AccessToken)
+        public async Task<IActionResult> UpdatePassword(string username, [FromBody] string newpassword, [FromHeader] string AccessToken)
         {
-            if (memoryService.AccessTokens[username] == AccessToken) 
+            if (memoryService.VerifiedUsers.Contains(username) && memoryService.AccessTokens[username] == AccessToken) 
             {
                 var filter = Builders<Account>.Filter.Eq("_id", username);
                 var update = Builders<Account>.Update.Set("password", encryptService.Encrypt(newpassword));
-                accounts.UpdateOne(filter, update);
+                await accounts.UpdateOneAsync(filter, update);
+                memoryService.VerifiedUsers.Remove(username);
+                return Ok("Your password has been updated");
             }
+            return Unauthorized("You haven't been verified");
         }
 
         [HttpPut("avatar/{username}")]
-        public void UpdateAvatar(string username, [FromBody]byte[] avatar, [FromHeader] string AccessToken)
+        public async Task<IActionResult> UpdateAvatar(string username, [FromBody]byte[] avatar, [FromHeader] string AccessToken)
         {
             if (memoryService.AccessTokens[username] == AccessToken) 
             {
                 avatar = Encoding.UTF8.GetBytes(encryptService.Encrypt(avatar.ToString()));
                 var filter = Builders<Account>.Filter.Eq("_id", username);
                 var update = Builders<Account>.Update.Set("avatar", avatar);
-                accounts.UpdateOne(filter, update);
-            }   
+                await accounts.UpdateOneAsync(filter, update);
+                return Ok();
+            }
+            return Unauthorized("Invalid AccessToken");
         }
 
         [HttpPut("cover/{username}")]
-        public void UpdateCover(string username, [FromBody] byte[] cover, [FromHeader] string AccessToken)
+        public async Task<IActionResult> UpdateCover(string username, [FromBody] byte[] cover, [FromHeader] string AccessToken)
         {
             if (memoryService.AccessTokens[username] == AccessToken) 
             {
                 cover = Encoding.UTF8.GetBytes(encryptService.Encrypt(cover.ToString()));
                 var filter = Builders<Account>.Filter.Eq("_id", username);
                 var update = Builders<Account>.Update.Set("cover", cover);
-                accounts.UpdateOne(filter, update);
+                await accounts.UpdateOneAsync(filter, update);
+                return Ok();
             }
+            return Unauthorized("Invalid AccessToken");
         }
 
         [HttpDelete("{username}")]
