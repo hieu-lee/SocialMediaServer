@@ -8,6 +8,7 @@ using SocialMediaServer.Validation;
 using SocialMediaServer.Services;
 using MongoDB.Bson;
 using Microsoft.AspNetCore.Cors;
+using System.Threading;
 
 // For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 
@@ -65,29 +66,21 @@ namespace SocialMediaServer.Controllers
         }
 
         [HttpGet("{username}/avatar")]
-        public byte[] GetMyAvatar(string username, [FromHeader] string AccessToken)
+        public byte[] GetMyAvatar(string username)
         {
-            if (memoryService.AccessTokens[username] == AccessToken) 
-            {
-                var filter = Builders<Account>.Filter.Eq("_id", username);
-                var acc = accounts.Find(filter).FirstOrDefault();
-                var avatar = Encoding.UTF8.GetBytes(encryptService.Decrypt(Encoding.UTF8.GetString(acc.avatar)));
-                return avatar;
-            }
-            return null;
+            var filter = Builders<Account>.Filter.Eq("_id", username);
+            var acc = accounts.Find(filter).FirstOrDefault();
+            var avatar = Encoding.UTF8.GetBytes(encryptService.Decrypt(Encoding.UTF8.GetString(acc.avatar)));
+            return avatar;
         }
 
         [HttpGet("{username}/cover")]
-        public byte[] GetMyCover(string username, [FromHeader] string AccessToken)
+        public byte[] GetMyCover(string username)
         {
-            if (memoryService.AccessTokens[username] == AccessToken) 
-            {
-                var filter = Builders<Account>.Filter.Eq("_id", username);
-                var acc = accounts.Find(filter).FirstOrDefault();
-                var cover = Encoding.UTF8.GetBytes(encryptService.Decrypt(Encoding.UTF8.GetString(acc.cover)));
-                return cover;
-            }
-            return null;
+            var filter = Builders<Account>.Filter.Eq("_id", username);
+            var acc = accounts.Find(filter).FirstOrDefault();
+            var cover = Encoding.UTF8.GetBytes(encryptService.Decrypt(Encoding.UTF8.GetString(acc.cover)));
+            return cover;
         }
 
         [HttpGet("{username}/newnoti")]
@@ -112,7 +105,9 @@ namespace SocialMediaServer.Controllers
                 var seennotis = acc.seennotis;
                 acc.newnotis.Clear();
                 acc.seennotis.AddRange(newnotis);
-                var task = accounts.FindOneAndReplaceAsync(filter, acc);
+                Thread t = new(() => { accounts.FindOneAndReplace(filter, acc); });
+                t.Start();
+                var task = Task.Factory.StartNew(() => { t.Join(); });
                 newnotis.Sort();
                 seennotis.Sort();
                 await task;
@@ -218,9 +213,18 @@ namespace SocialMediaServer.Controllers
                 var filter = Builders<Account>.Filter.Eq("_id", acc.username);
                 var update = Builders<Account>.Update.Set("online", true);
                 acc.password = encryptService.Encrypt(acc.password);
-                var task = walls.CreateCollectionAsync(acc.username);
-                var task2 = accounts.UpdateOneAsync(filter, update);
-                var task3 = accounts.InsertOneAsync(acc);
+                Thread t = new(() => { walls.CreateCollection(acc.username); });
+                t.Start();
+                Thread t2 = new(() => { accounts.UpdateOne(filter, update); });
+                t2.Start();
+                Thread t3 = new(() => { accounts.InsertOne(acc); });
+                t3.Start();
+                var task = Task.Factory.StartNew(() =>
+                {
+                    t.Join();
+                    t2.Join();
+                    t3.Join();
+                });
                 memoryService.OnlineTrack[acc.username] = new(600000);
                 memoryService.OnlineTrack[acc.username].Elapsed += (s, e) =>
                 {
@@ -232,13 +236,11 @@ namespace SocialMediaServer.Controllers
                     memoryService.OnlineTrack[acc.username].Close();
                 };
                 memoryService.OnlineTrack[acc.username].Enabled = true;
-                await task;
-                await task2;
-                await task3;
                 var accesstoken = ObjectId.GenerateNewId().ToString();
                 memoryService.AccessTokens[acc.username] = accesstoken;
                 memoryService.CreateSessionTracker(acc.username);
                 memoryService.VerifiedUsers.Remove(acc.username);
+                await task;
                 return Ok(accesstoken);
             }
             return Unauthorized("Your account hasn't been verified");
@@ -255,7 +257,8 @@ namespace SocialMediaServer.Controllers
             {
                 if (encryptService.Decrypt(myacc.password) == acc.password)
                 {
-                    var task = accounts.UpdateOneAsync(filter, update);
+                    Thread t = new(() => { accounts.UpdateOne(filter, update); });
+                    t.Start();
                     memoryService.OnlineTrack[acc.username] = new(600000);
                     memoryService.OnlineTrack[acc.username].Elapsed += (s, e) =>
                     {
@@ -267,7 +270,7 @@ namespace SocialMediaServer.Controllers
                         memoryService.OnlineTrack[acc.username].Close();
                     };
                     memoryService.OnlineTrack[acc.username].Enabled = true;
-                    await task;
+                    t.Join();
                     string accessToken;
                     if (memoryService.AccessTokens.ContainsKey(acc.username))
                     {
@@ -464,7 +467,9 @@ namespace SocialMediaServer.Controllers
         [HttpDelete("{username}")]
         public async Task Delete(string username)
         {
-            var task = walls.DropCollectionAsync(username);
+            Thread t = new(() => { walls.DropCollectionAsync(username); });
+            t.Start();
+            var task = Task.Factory.StartNew(() => { t.Join(); });
             var filter = Builders<Account>.Filter.Eq("_id", username);
             accounts.DeleteOne(filter);
             if (memoryService.AccessTokens.ContainsKey(username))
