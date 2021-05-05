@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.OpenApi.Models;
 using MongoDB.Driver;
 using SocialMediaServer.Services;
 using System;
@@ -44,6 +45,10 @@ namespace SocialMediaServer
                 return new MongoClient(settings);
             });
             services.AddControllers();
+            services.AddSwaggerGen(c =>
+            {
+                c.SwaggerDoc("v1", new OpenApiInfo { Title = "SocialMediaServer", Version = "v1" });
+            });
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -53,6 +58,9 @@ namespace SocialMediaServer
             {
                 app.UseDeveloperExceptionPage();
             }
+            app.UseSwagger();
+
+            app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "SocialMediaServer v1"));
 
             app.UseHttpsRedirection();
 

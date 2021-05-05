@@ -1,6 +1,7 @@
 ﻿using FluentEmail.Core;
 using FluentEmail.Razor;
 using FluentEmail.Smtp;
+using MongoDB.Driver;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -83,6 +84,44 @@ namespace SocialMediaServer.Services
             };
             timer.Enabled = true;
             TimerReset[username] = timer;
+        }
+
+        public async Task AddNotificationAsync(IMongoCollection<Account> accounts, string username, string relateuser, string type, Dictionary<string, Comment> comments = null)
+        {
+            if (type != "comment")
+            {
+                var filter = Builders<Account>.Filter.Eq("_id", relateuser);
+                var relate = accounts.Find(filter).FirstOrDefault();
+                relate.newnotis.Add(new Notification() { username = username, type = type, time = DateTime.Now });
+                var update = Builders<Account>.Update.Set("newnotis", relate.newnotis);
+                await accounts.UpdateOneAsync(filter, update);
+                return;
+            }
+            var time = DateTime.Now;
+            var acc = accounts.Find(s => s.username == username).FirstOrDefault();
+            var relatefriends = new HashSet<string>();
+            relatefriends.Add(relateuser);
+            foreach (Comment cmt in comments.Values)
+            {
+                if (acc.friendlist.Contains(cmt.username))
+                {
+                    relatefriends.Add(cmt.username);
+                }
+            }
+            var tasks = new HashSet<Task>();
+            Parallel.ForEach(relatefriends, fr =>
+            {
+                var filter = Builders<Account>.Filter.Eq("_id", fr);
+                var relate = accounts.Find(filter).FirstOrDefault();
+                relate.newnotis.Add(new Notification() { username = username, type = "comment", time = time });
+                var update = Builders<Account>.Update.Set("newnotis", relate.newnotis);
+                var t = accounts.UpdateOneAsync(filter, update);
+                tasks.Add(t);
+            });
+            foreach (var t in tasks)
+            {
+                await t;
+            }
         }
     }
 }

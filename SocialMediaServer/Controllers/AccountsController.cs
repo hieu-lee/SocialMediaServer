@@ -86,7 +86,7 @@ namespace SocialMediaServer.Controllers
         [HttpGet("{username}/newnoti")]
         public int GetNewNotifications(string username, [FromHeader] string AccessToken)
         {
-            if (memoryService.AccessTokens[username] == AccessToken) 
+            if (memoryService.AccessTokens[username] == AccessToken)
             {
                 var filter = Builders<Account>.Filter.Eq("_id", username);
                 return accounts.Find(filter).FirstOrDefault().newnotis.Count;
@@ -97,7 +97,7 @@ namespace SocialMediaServer.Controllers
         [HttpGet("{username}/noti")]
         public async Task<NotiResult> GetNotifications(string username, [FromHeader] string AccessToken)
         {
-            if (memoryService.AccessTokens[username] == AccessToken) 
+            if (memoryService.AccessTokens[username] == AccessToken)
             {
                 var filter = Builders<Account>.Filter.Eq("_id", username);
                 var acc = accounts.Find(filter).FirstOrDefault();
@@ -119,7 +119,7 @@ namespace SocialMediaServer.Controllers
         [HttpGet("{username}")]
         public Account GetMyAccount(string username, [FromHeader] string AccessToken)
         {
-            if (memoryService.AccessTokens[username] == AccessToken) 
+            if (memoryService.AccessTokens[username] == AccessToken)
             {
                 var filter = Builders<Account>.Filter.Eq("_id", username);
                 var acc = accounts.Find(filter).FirstOrDefault();
@@ -136,7 +136,7 @@ namespace SocialMediaServer.Controllers
         [HttpPost("rec/{username}")]
         public RecResult LoadFriendsRec(string username, [FromBody] HashSet<string> seenusers, [FromHeader] string AccessToken)
         {
-            if (memoryService.AccessTokens[username] == AccessToken) 
+            if (memoryService.AccessTokens[username] == AccessToken)
             {
                 List<Account> res = new();
                 var myacc = accounts.Find(s => s.username != username).FirstOrDefault();
@@ -244,7 +244,7 @@ namespace SocialMediaServer.Controllers
                 return Ok(accesstoken);
             }
             return Unauthorized("Your account hasn't been verified");
-            
+
         }
 
         [HttpPost("signin")]
@@ -326,7 +326,7 @@ namespace SocialMediaServer.Controllers
         [HttpPut("connection/{username}")]
         public async Task<IActionResult> UpdateConnection(string username, [FromBody] bool connected, [FromHeader] string AccessToken)
         {
-            if (memoryService.AccessTokens[username] == AccessToken) 
+            if (memoryService.AccessTokens[username] == AccessToken)
             {
                 if (connected)
                 {
@@ -384,7 +384,7 @@ namespace SocialMediaServer.Controllers
         [HttpPut("send/{username}")]
         public async Task<IActionResult> SendFriendRequest(string username, [FromBody] string newfriend, [FromHeader] string AccessToken)
         {
-            if (memoryService.AccessTokens[username] == AccessToken) 
+            if (memoryService.AccessTokens[username] == AccessToken)
             {
                 var filter = Builders<Account>.Filter.Eq("_id", username);
                 var update = Builders<Account>.Update.AddToSet("waitinglist", newfriend);
@@ -397,7 +397,7 @@ namespace SocialMediaServer.Controllers
         [HttpPut("accept/{username}")]
         public async Task<IActionResult> AcceptFriendRequest(string username, [FromBody] string newfriend, [FromHeader] string AccessToken)
         {
-            if (memoryService.AccessTokens[username] == AccessToken) 
+            if (memoryService.AccessTokens[username] == AccessToken)
             {
                 var filter = Builders<Account>.Filter.Eq("_id", username);
                 var myacc = await accounts.Find(filter).FirstOrDefaultAsync();
@@ -412,7 +412,7 @@ namespace SocialMediaServer.Controllers
         [HttpPut("bio/{username}")]
         public async Task<IActionResult> UpdateBio(string username, [FromBody] string bio, [FromHeader] string AccessToken)
         {
-            if (memoryService.AccessTokens[username] == AccessToken) 
+            if (memoryService.AccessTokens[username] == AccessToken)
             {
                 var filter = Builders<Account>.Filter.Eq("_id", username);
                 var update = Builders<Account>.Update.Set("bio", bio);
@@ -425,7 +425,7 @@ namespace SocialMediaServer.Controllers
         [HttpPut("password/{username}")]
         public async Task<IActionResult> UpdatePassword(string username, [FromBody] string newpassword, [FromHeader] string AccessToken)
         {
-            if (memoryService.VerifiedUsers.Contains(username) && memoryService.AccessTokens[username] == AccessToken) 
+            if (memoryService.VerifiedUsers.Contains(username) && memoryService.AccessTokens[username] == AccessToken)
             {
                 var filter = Builders<Account>.Filter.Eq("_id", username);
                 var update = Builders<Account>.Update.Set("password", encryptService.Encrypt(newpassword));
@@ -437,9 +437,9 @@ namespace SocialMediaServer.Controllers
         }
 
         [HttpPut("avatar/{username}")]
-        public async Task<IActionResult> UpdateAvatar(string username, [FromBody]byte[] avatar, [FromHeader] string AccessToken)
+        public async Task<IActionResult> UpdateAvatar(string username, [FromBody] byte[] avatar, [FromHeader] string AccessToken)
         {
-            if (memoryService.AccessTokens[username] == AccessToken) 
+            if (memoryService.AccessTokens[username] == AccessToken)
             {
                 avatar = Encoding.UTF8.GetBytes(encryptService.Encrypt(avatar.ToString()));
                 var filter = Builders<Account>.Filter.Eq("_id", username);
@@ -453,7 +453,7 @@ namespace SocialMediaServer.Controllers
         [HttpPut("cover/{username}")]
         public async Task<IActionResult> UpdateCover(string username, [FromBody] byte[] cover, [FromHeader] string AccessToken)
         {
-            if (memoryService.AccessTokens[username] == AccessToken) 
+            if (memoryService.AccessTokens[username] == AccessToken)
             {
                 cover = Encoding.UTF8.GetBytes(encryptService.Encrypt(cover.ToString()));
                 var filter = Builders<Account>.Filter.Eq("_id", username);
@@ -486,7 +486,7 @@ namespace SocialMediaServer.Controllers
             }
             if (memoryService.TimerReset.ContainsKey(username))
             {
-                memoryService.TimerReset.Remove(username); 
+                memoryService.TimerReset.Remove(username);
             }
             await task;
         }

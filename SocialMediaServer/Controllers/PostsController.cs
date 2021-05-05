@@ -23,52 +23,16 @@ namespace SocialMediaServer.Controllers
         private IMongoCollection<Post> posts;
         private IMongoCollection<Account> accounts;
         private IMongoDatabase walls;
+        private MemoryDataAndEmailService memoryService;
 
-        public postsController(IMongoClient client, EncryptionAndCompressService encrypt)
+        public postsController(IMongoClient client, EncryptionAndCompressService encrypt, MemoryDataAndEmailService memoryService)
         {
             encryptService = encrypt;
+            this.memoryService = memoryService;
             var database = client.GetDatabase("SocialMediaManagement");
             accounts = database.GetCollection<Account>("accounts");
             posts = database.GetCollection<Post>("posts");
             walls = client.GetDatabase("Walls");
-        }
-
-        public async Task AddNotificationAsync(string username, string relateuser, string type, Dictionary<string, Comment> comments = null)
-        {
-            if (type != "comment")
-            {
-                var filter = Builders<Account>.Filter.Eq("_id", relateuser);
-                var relate = accounts.Find(filter).FirstOrDefault();
-                relate.newnotis.Add(new Notification() { username = username, type = type, time = DateTime.Now });
-                var update = Builders<Account>.Update.Set("newnotis", relate.newnotis);
-                await accounts.UpdateOneAsync(filter, update);
-                return;
-            }
-            var time = DateTime.Now;
-            var acc = accounts.Find(s => s.username == username).FirstOrDefault();
-            var relatefriends = new HashSet<string>();
-            relatefriends.Add(relateuser);
-            foreach (Comment cmt in comments.Values)
-            {
-                if (acc.friendlist.Contains(cmt.username))
-                {
-                    relatefriends.Add(cmt.username);
-                }
-            }
-            var tasks = new HashSet<Task>();
-            Parallel.ForEach(relatefriends, fr =>
-            {
-                var filter = Builders<Account>.Filter.Eq("_id", fr);
-                var relate = accounts.Find(filter).FirstOrDefault();
-                relate.newnotis.Add(new Notification() { username = username, type = "comment", time = time });
-                var update = Builders<Account>.Update.Set("newnotis", relate.newnotis);
-                var t = accounts.UpdateOneAsync(filter, update);
-                tasks.Add(t);
-            });
-            foreach (var t in tasks)
-            {
-                await t;
-            }
         }
 
         [HttpGet("newsfeed/{username}")]
@@ -184,7 +148,7 @@ namespace SocialMediaServer.Controllers
             var myacc = accounts.Find(s => s.username == username).FirstOrDefault();
             var userava = encryptService.Compress(myacc.avatar);
             var sharedpost = await task;
-            var notitask = AddNotificationAsync(username, sharedpost.username, "shared");
+            var notitask = memoryService.AddNotificationAsync(accounts, username, sharedpost.username, "shared");
             Post post = new() { username = username, userava = userava, caption = caption, time = DateTime.Now, sharedpost = sharedpost };
             var task1 = posts.InsertOneAsync(post);
             walls.GetCollection<Post>(username).InsertOne(post);
@@ -199,7 +163,7 @@ namespace SocialMediaServer.Controllers
             var filter = Builders<Post>.Filter.Eq("_id", postid);
             var task = Task.Factory.StartNew(() => { return walls.GetCollection<Post>(comment.username); });
             var post = posts.Find(filter).FirstOrDefault();
-            var notitask = AddNotificationAsync(comment.username, post.username, "comment", post.comments);
+            var notitask = memoryService.AddNotificationAsync(accounts, comment.username, post.username, "comment", post.comments);
             post.NewComment(comment);
             var update = Builders<Post>.Update.Set("comments", post.comments);
             var update1 = Builders<Post>.Update.Set("commentscount", post.commentscount);
@@ -242,7 +206,7 @@ namespace SocialMediaServer.Controllers
         [HttpPut("upvote/{username}")]
         public async Task UpvotePost(string username, [FromBody] Post post)
         {
-            var notitask = AddNotificationAsync(username, post.username, "upvote");
+            var notitask = memoryService.AddNotificationAsync(accounts, username, post.username, "upvote");
             var task = Task.Factory.StartNew(() => { return walls.GetCollection<Post>(username); });
             post.NewUpvote(username);
             var filter = Builders<Post>.Filter.Eq("_id", post.Id);
@@ -278,7 +242,7 @@ namespace SocialMediaServer.Controllers
         [HttpPut("downvote/{username}")]
         public async Task DownvotePost(string username, [FromBody] Post post)
         {
-            var notitask = AddNotificationAsync(username, post.username, "downvote");
+            var notitask =  memoryService.AddNotificationAsync(accounts, username, post.username, "downvote");
             var task = Task.Factory.StartNew(() => { return walls.GetCollection<Post>(username); });
             post.NewDownvote(username);
             var filter = Builders<Post>.Filter.Eq("_id", post.Id);
