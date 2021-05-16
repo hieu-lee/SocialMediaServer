@@ -201,7 +201,7 @@ namespace SocialMediaServer.Controllers
                 }
                 else
                 {
-                    return Forbid("Your verification code is incorrect");
+                    return StatusCode(403, "Your verification code is incorrect");
                 }
             }
             else
